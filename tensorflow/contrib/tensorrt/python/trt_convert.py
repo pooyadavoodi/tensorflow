@@ -44,6 +44,7 @@ from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
+import ctypes
 
 if _six.PY2:
   _to_bytes = lambda s: s
@@ -270,6 +271,10 @@ def create_inference_graph(input_graph_def,
     input_saved_model_tags = [tag_constants.SERVING]
   saved_model_loader = None
   grappler_meta_graph_def = None
+
+  #Initialize TensorRT plugins
+  plugin_lib = ctypes.CDLL("libnvinfer_plugin.so")
+  plugin_lib.initLibNvInferPlugins(None, "")
 
   if input_graph_def is None:
     # Read from SavedModel and freeze the graph if necessary.

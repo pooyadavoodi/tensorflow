@@ -30,6 +30,12 @@ void Logger::log(Severity severity, const char* msg) {
       VLOG(2) << name_ << " " << msg;
       break;
     }
+#if NV_TENSORRT_VERSION >= 5100
+    case Severity::kVERBOSE: {  // Mark TRT verbose messages as debug!
+      VLOG(2) << name_ << " " << msg;
+      break;
+    }
+#endif
     case Severity::kWARNING: {
       LOG(WARNING) << name_ << " " << msg;
       break;

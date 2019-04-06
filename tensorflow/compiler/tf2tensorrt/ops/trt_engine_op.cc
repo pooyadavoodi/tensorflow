@@ -41,6 +41,7 @@ REGISTER_OP("TRTEngineOp")
     .Attr("precision_mode: {'FP32', 'FP16', 'INT8'}")
     .Attr("calibration_data: string = ''")
     .Attr("use_calibration: bool = true")
+    .Attr("use_implicit_batch: bool = true")
     .Input("in_tensor: InT")
     .Output("out_tensor: OutT")
     // TODO(jie): TF requires concrete output shape for concrete input shapes.
@@ -49,6 +50,7 @@ REGISTER_OP("TRTEngineOp")
     // implementation, we do require all input tensor to carry the same batch
     // size, but this could change in the future). Hence we disable shape
     // inference function as a workaround.
+    // TODO(tmorris): Shape inference should be possible with TRT 6.0
     .SetShapeFn(shape_inference::UnknownShape)
     // Deprecated attributes.
     .Attr("segment_funcdef_name: string = ''")

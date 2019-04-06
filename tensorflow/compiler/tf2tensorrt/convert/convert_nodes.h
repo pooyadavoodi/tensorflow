@@ -117,6 +117,24 @@ struct EngineInfo {
   bool use_calibration;
 };
 
+struct OptimizationProfileConfig {
+  // Length of vector == num_inputs to engine
+  std::vector<nvinfer1::Dims> min;
+  std::vector<nvinfer1::Dims> opt;
+  std::vector<nvinfer1::Dims> max;
+
+  // Get min, opt, and max by parsing values of TFTRT_OPT_PROFILE_MIN,
+  // TFTRT_OPT_PROFILE_OPT, and TFTRT_OPT_PROFILE_MAX environment variables.
+  // TODO(tmorris): Remove this function once calibration is set up.
+  Status GetFromEnvironmentVariables();
+
+  // For static dims (not equal to -1), we don't require that they match in the
+  // config. But TRT requires that all static dims in the profile match the
+  // input. This function copies all non -1 values from dims and overwrites
+  // their corresponding dims in min, opt, and max.
+  Status OverwriteStaticDims(int input_index, const nvinfer1::Dims& dims);
+};
+
 // Constructs a graphdef from the segment in the given graph. Adds _Arg
 // nodes for input edges (InputPH_*) and _Retval nodes for output edges
 // (OutputPH_*). This function needs to be called before TensorRT nodes
@@ -151,7 +169,7 @@ Status ConvertGraphDefToEngine(
     nvinfer1::ILogger* logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
-    bool* convert_successfully);
+    const bool use_implicit_batch, bool* convert_successfully);
 
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.
@@ -338,6 +356,9 @@ class TRT_TensorOrWeights {
   // is that currently it cannot convert a graph that doesn't have the batch
   // size represented in the shapes or the batch sizes are different. See
   // b/118387490 for more details.
+  //
+  // if use_implicit_batch is false, batch_size_ is unused and
+  // tensor_->getDimensions() will contain the entire shape (A,B,C).
   int batch_size_ = -1;
 
   TRT_ShapedWeights weights_;
@@ -356,7 +377,8 @@ struct OpConverterParams {
                     const std::vector<TRT_TensorOrWeights>& inputs,
                     std::vector<TRT_TensorOrWeights>* outputs,
                     TrtWeightStore* weight_store,
-                    TrtPrecisionMode precision_mode, bool use_calibration);
+                    TrtPrecisionMode precision_mode, bool use_calibration,
+                    bool use_implicit_batch);
 
   // Constructor used for conversion.
   OpConverterParams(Converter* converter, const NodeDef& node_def,
@@ -372,6 +394,7 @@ struct OpConverterParams {
   TrtWeightStore* weight_store;
   const TrtPrecisionMode precision_mode;
   const bool use_calibration;
+  const bool use_implicit_batch;
 };
 
 using OpConverter = std::function<Status(OpConverterParams*)>;
@@ -383,7 +406,8 @@ class TrtNodeValidator {
   // checked by IsTensorRTCandidate() later. It is used to get the shape and
   // data type information of a tensor for validation purpose.
   TrtNodeValidator(const grappler::GraphProperties& graph_properties,
-                   TrtPrecisionMode precision_mode, bool use_calibration);
+                   TrtPrecisionMode precision_mode, bool use_calibration,
+                   bool use_implicit_batch);
 
   // Returns OK iff 'node' is a TF-TRT conversion candidate, which will be added
   // to TRT subgraph and later converted into TRT engine.
@@ -423,6 +447,8 @@ class TrtNodeValidator {
 
   const bool use_calibration_;
 
+  const bool use_implicit_batch_;
+
   friend class ValidatorTest;
   friend class OpConverterTest;
 };
@@ -445,7 +471,7 @@ class Converter {
 
   Converter(nvinfer1::INetworkDefinition* trt_network,
             TrtPrecisionMode precision_mode, bool use_calibration,
-            nvinfer1::ILogger* trt_logger);
+            nvinfer1::ILogger* trt_logger, const bool use_implicit_batch);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by the TRT engine builder to build a TRT network from a TF
@@ -477,6 +503,9 @@ class Converter {
 
   // Calibration will be or was previously performed on this network?
   bool use_calibration() const { return use_calibration_; }
+
+  // Using the implicit batch TRT mode (default mode before TRT6)?
+  bool use_implicit_batch() const { return use_implicit_batch_; }
 
   // This should be called on the inputs and outputs of any layer we create
   // where we know that the quantization range does not change during that
@@ -514,6 +543,10 @@ class Converter {
                                const nvinfer1::Dims& dims,
                                const bool validation_only,
                                nvinfer1::ITensor** tensor);
+
+  Status SqueezeTensor(nvinfer1::ITensor* input,
+                       const std::vector<int>& trt_axes,
+                       nvinfer1::ITensor** output);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
@@ -575,6 +608,10 @@ class Converter {
 
   const bool use_calibration_;
 
+  // If this is true, we are using NetworkV2 API in which all dimensions are
+  // explicitly set.
+  const bool use_implicit_batch_;
+
   // Batch size of inputs to trt_network_ added by AddInputTensor(). During
   // network construction it will update this, use it to verify the batch
   // size of all inputs are compatible, and make sure individual TF node is
@@ -591,6 +628,7 @@ class Converter {
 Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                             const TRT_TensorOrWeights& operand_r,
                             const bool check_feasibility,
+                            const bool use_implicit_batch,
                             nvinfer1::Dims* operand_l_new_dims,
                             nvinfer1::Dims* operand_r_new_dims);
 

@@ -48,6 +48,8 @@ struct ConversionParams {
   // maximum number of cached engines
   int max_cached_engines = 1;
   bool use_calibration = true;
+  // Use NetworkV2 when this is false (full dims model)
+  bool use_implicit_batch = true;
 };
 
 // Method to call from optimization pass

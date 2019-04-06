@@ -193,6 +193,12 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
     LOG(INFO) << CurrentStackTrace();
     PrintDebugInfo(cluster, item);
   }
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  // With TRT 6.0, NetworkV2 api will be used in which there is no implicit
+  // batch dimension.
+  const bool use_implicit_batch = false;
+#else
+  const bool use_implicit_batch = true;
   if (!is_dynamic_op_) {
     int max_batch_dim = -1;
     if (!item.feed.empty()) {
@@ -219,7 +225,8 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
                 << "This can result in poor performance.";
     }
   }
-  grappler::GraphProperties static_graph_properties(item);
+#endif
+   grappler::GraphProperties static_graph_properties(item);
   TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
   ConversionParams cp;
 
@@ -259,6 +266,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.is_dyn_op = is_dynamic_op_;
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
+  cp.use_implicit_batch = use_implicit_batch;
   auto status = ConvertAfterShapes(cp);
   VLOG(1) << "Returning from " << name_;
   return status;

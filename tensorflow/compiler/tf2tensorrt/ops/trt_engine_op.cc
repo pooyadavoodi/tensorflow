@@ -50,7 +50,6 @@ REGISTER_OP("TRTEngineOp")
     // implementation, we do require all input tensor to carry the same batch
     // size, but this could change in the future). Hence we disable shape
     // inference function as a workaround.
-    // TODO(tmorris): Shape inference should be possible with TRT 6.0
     .SetShapeFn(shape_inference::UnknownShape)
     // Deprecated attributes.
     .Attr("segment_funcdef_name: string = ''")

@@ -117,24 +117,6 @@ struct EngineInfo {
   bool use_calibration;
 };
 
-struct OptimizationProfileConfig {
-  // Length of vector == num_inputs to engine
-  std::vector<nvinfer1::Dims> min;
-  std::vector<nvinfer1::Dims> opt;
-  std::vector<nvinfer1::Dims> max;
-
-  // Get min, opt, and max by parsing values of TFTRT_OPT_PROFILE_MIN,
-  // TFTRT_OPT_PROFILE_OPT, and TFTRT_OPT_PROFILE_MAX environment variables.
-  // TODO(tmorris): Remove this function once calibration is set up.
-  Status GetFromEnvironmentVariables();
-
-  // For static dims (not equal to -1), we don't require that they match in the
-  // config. But TRT requires that all static dims in the profile match the
-  // input. This function copies all non -1 values from dims and overwrites
-  // their corresponding dims in min, opt, and max.
-  Status OverwriteStaticDims(int input_index, const nvinfer1::Dims& dims);
-};
-
 // Constructs a graphdef from the segment in the given graph. Adds _Arg
 // nodes for input edges (InputPH_*) and _Retval nodes for output edges
 // (OutputPH_*). This function needs to be called before TensorRT nodes
@@ -504,7 +486,7 @@ class Converter {
   // Calibration will be or was previously performed on this network?
   bool use_calibration() const { return use_calibration_; }
 
-  // Using the implicit batch TRT mode (default mode before TRT6)?
+  // Whether implicit batch mode is enabled
   bool use_implicit_batch() const { return use_implicit_batch_; }
 
   // This should be called on the inputs and outputs of any layer we create
@@ -543,10 +525,6 @@ class Converter {
                                const nvinfer1::Dims& dims,
                                const bool validation_only,
                                nvinfer1::ITensor** tensor);
-
-  Status SqueezeTensor(nvinfer1::ITensor* input,
-                       const std::vector<int>& trt_axes,
-                       nvinfer1::ITensor** output);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
@@ -608,8 +586,8 @@ class Converter {
 
   const bool use_calibration_;
 
-  // If this is true, we are using NetworkV2 API in which all dimensions are
-  // explicitly set.
+  // If this is false, all dimensions including the batch dimension are 
+  // set explicitely.
   const bool use_implicit_batch_;
 
   // Batch size of inputs to trt_network_ added by AddInputTensor(). During

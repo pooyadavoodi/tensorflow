@@ -83,38 +83,6 @@ class BatchMatMulWeightBroadcastDims2Test(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     return {"TRTEngineOp_0": ["matmul", "kernel"]}
 
-  def GraphFn(self, inp):
-    dtype = inp.dtype
-    b = constant_op.constant(np.random.randn(1, 5, 7), dtype=dtype,
-                             name="kernel")
-    x1 = math_ops.matmul(inp, b, name="matmul")
-    return array_ops.identity(x1, name="output_0")
-
-  def GetParams(self):
-    return self.BuildParams(self.GraphFn, dtypes.float32,
-                            [[12, 9, 5]], [[12, 9, 7]])
-
-  def ExpectedEnginesToBuild(self, run_params):
-    """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["matmul", "kernel"]}
-
-class BatchMatMulWeightBroadcastDims2Test(trt_test.TfTrtIntegrationTestBase):
-  """Testing conversion of BatchMatMulV2 where weight operand must be
-  broadcasted."""
-
-  def GraphFn(self, inp):
-    dtype = inp.dtype
-    b = constant_op.constant(np.random.randn(5, 7), dtype=dtype, name="kernel")
-    x1 = math_ops.matmul(inp, b, name="matmul")
-    return array_ops.identity(x1, name="output_0")
-
-  def GetParams(self):
-    return self.BuildParams(self.GraphFn, dtypes.float32, [[12, 9, 5]],
-                            [[12, 9, 7]])
-
-  def ExpectedEnginesToBuild(self, run_params):
-    """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["matmul", "kernel"]}
 
 if __name__ == "__main__":
   test.main()

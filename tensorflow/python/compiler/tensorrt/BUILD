@@ -104,7 +104,6 @@ cuda_py_test(
 cuda_py_tests(
     name = "tf_trt_integration_test",
     srcs = [
-        "test/activation_test.py",
         "test/base_test.py",
         "test/batch_matmul_test.py",
         "test/binary_tensor_weight_broadcast_test.py",

@@ -149,7 +149,8 @@ TrtConversionParams = collections.namedtuple(
         "use_calibration",
 
         # Max size for the input batch.
-        # This option is deprecated in TF 2.0.
+        # This parameter is only effective when is_dynamic_op=False which
+        # is not supported in TF 2.0.
         "max_batch_size",
     ])
 

@@ -70,6 +70,9 @@ Status TRTOptimizationPass::Init(
   if (params.count("trt_logger")) {
     trt_logger_name_ = params.at("trt_logger").s();
   }
+  if (params.count("use_implicit_batch")) {
+    use_implicit_batch = params.at("use_implicit_batch").b();
+  }
   return Status::OK();
 }
 
@@ -193,12 +196,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
     LOG(INFO) << CurrentStackTrace();
     PrintDebugInfo(cluster, item);
   }
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  // With TRT 6.0, NetworkV2 api will be used in which there is no implicit
-  // batch dimension.
-  const bool use_implicit_batch = false;
-#else
-  const bool use_implicit_batch = true;
   if (!is_dynamic_op_) {
     int max_batch_dim = -1;
     if (!item.feed.empty()) {
@@ -225,8 +222,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
                 << "This can result in poor performance.";
     }
   }
-#endif
-   grappler::GraphProperties static_graph_properties(item);
+  grappler::GraphProperties static_graph_properties(item);
   TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
   ConversionParams cp;
 

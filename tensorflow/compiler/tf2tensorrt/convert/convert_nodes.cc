@@ -5697,8 +5697,6 @@ Status ConvertGraphDefToEngine(
       nvinfer1::Dims trt_dims;
       int batch_size = -1;
       auto shape = input_shapes.at(slot_number);
-      // TODO(trevor-m): update ConvertGraphDefToEngine to accept new argument
-      // to determine whether mode is dynamic.
       auto status = ValidateTensorProperties(
           node_def.op(), node_def.attr().at(type_key).type(), shape,
           use_implicit_batch, /*validation_only=*/false,

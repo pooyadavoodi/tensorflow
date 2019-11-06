@@ -154,6 +154,9 @@ class TRTEngineOp : public AsyncOpKernel {
   // Whether to calibrate INT8 engine.
   bool calibration_mode_;
 
+  // Whether to build TensorRT engines at runtime
+  bool allow_build_at_runtime_;
+
   // Maximum number of cached engines
   int max_cached_engines_;
 
@@ -269,6 +272,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                  TrtPrecisionModeFromName(precision_string, &precision_mode_));
   OP_REQUIRES_OK(context,
                  context->GetAttr("use_calibration", &use_calibration_));
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("allow_build_at_runtime", &allow_build_at_runtime_));
   func_handle_ = kInvalidHandle;
   if (!static_engine_) {
     FunctionLibraryRuntime* lib = context->function_library();
@@ -734,6 +739,16 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   // If matched, use that engine. Otherwise, we will look in cache for that
   // exact shape and possibly create a new engine if it is not in cache.
   if (!cache.count(engine_input_shapes)) {
+    if (!allow_build_at_runtime_) {
+      LOG(WARNING) << "Found no suitable engine in cache. "
+                   << "Not building a new engine because "
+                   << "allow_build_at_runtime=False. "
+                   << "The native segment will be used instead.";
+      // Store an empty engine in the cache for these input shapes so we don't
+      // try to build the same failing engine again.
+      cache.emplace(engine_input_shapes, absl::make_unique<EngineContext>());
+      return &empty_context;
+    }
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
     LOG(INFO) << "Building a new TensorRT engine for " << name()

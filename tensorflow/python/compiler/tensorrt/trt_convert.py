@@ -1,4 +1,5 @@
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -164,6 +165,13 @@ TrtConversionParams = collections.namedtuple(
         # This parameter is only effective when is_dynamic_op=False which
         # is not supported in TF 2.0.
         "max_batch_size",
+
+        # Whether to build TensorRT engines during runtime. If no
+        # TensorRT engine can be found in cache that can handle the given inputs
+        # during runtime, then a new TensorRT engine is built at runtime if
+        # allow_build_at_runtime=True, and otherwise native TF is used.
+        # This argument is only effective if is_dynamic_op=True.
+        "allow_build_at_runtime",
     ])
 
 DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
@@ -174,7 +182,8 @@ DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
     is_dynamic_op=True,
     maximum_cached_engines=1,
     use_calibration=True,
-    max_batch_size=1)
+    max_batch_size=1,
+    allow_build_at_runtime=True)
 
 _TRT_ENGINE_OP_NAME = "TRTEngineOp"
 
@@ -234,7 +243,6 @@ def _check_conversion_params(conversion_params, is_v2=False):
           not trt_optimizer.parameter_map["is_dynamic_op"]):
         raise ValueError("Option is_dynamic_op=False is not supported "
                          "in TF 2.0, please set it to True instead.")
-
 
 def _check_trt_version_compatibility():
   """Check compatibility of TensorRT version.
@@ -325,10 +333,30 @@ def get_tensorrt_rewriter_config(conversion_params,
         "maximum_cached_engines"].i = conversion_params.maximum_cached_engines
     optimizer.parameter_map[
         "use_calibration"].b = conversion_params.use_calibration
+    # Since build() needs this param to be True, setting the user specified value
+    # is postponed to save().
+    optimizer.parameter_map[
+        "allow_build_at_runtime"].b = True
     optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
-    if not is_v2:
+    if is_v2:
+      # Static mode (building TRT engine without executing the op) is deprecated
+      # in TF 2.0. See TrtGraphConverterV2 for more details.
+      if not conversion_params.is_dynamic_op:
+        raise ValueError("Option is_dynamic_op=False is not supported in TF 2.0, "
+                         "please set it to True instead.")
+      optimizer.parameter_map["is_dynamic_op"].b = True
+    else:
       optimizer.parameter_map[
           "max_batch_size"].i = conversion_params.max_batch_size
+      optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
+      if not conversion_params.allow_build_at_runtime:
+        raise ValueError(
+            "Building TensorRT engines at runtime (allow_build_at_runtime=True) "
+            "is required in TF1.x because there is no method build() that can be"
+            "used to build TensorRT engines offline. In order to avoid building "
+            "engines at runtime in TF1.x, the only supported way is to set "
+            "is_dynamic_op=False which does not support graphs with "
+            "unknown shapes.")
   else:
     rewriter_config_with_trt.CopyFrom(
         conversion_params.rewriter_config_template)
@@ -511,7 +539,8 @@ class TrtGraphConverter(object):
         is_dynamic_op=is_dynamic_op,
         maximum_cached_engines=maximum_cached_engines,
         use_calibration=use_calibration,
-        max_batch_size=max_batch_size)
+        max_batch_size=max_batch_size,
+        allow_build_at_runtime=True)
     _check_conversion_params(self._conversion_params)
 
   def _run_conversion(self):
@@ -1148,6 +1177,25 @@ class TrtGraphConverterV2(object):
     signatures = {
         key: value for key, value in self._saved_model.signatures.items()
     }
+
+    # Set allow_build_at_runtime=False if asked by user.
+    # This attribute is set here because build() needs it to be True
+    # in order to build engines.
+    if not self._conversion_params.allow_build_at_runtime:
+      def _reset_allow_build_at_runtime(node):
+        node.attr["allow_build_at_runtime"].b = False
+      self._for_each_trt_node(self._converted_graph_def,
+                              _reset_allow_build_at_runtime)
+      # Rebuild the function since a node attribute changed above
+      reset_converted_func = wrap_function.function_from_graph_def(
+          self._converted_graph_def,
+          [tensor.name for tensor in self._converted_func.inputs],
+          [tensor.name for tensor in self._converted_func.outputs])
+      reset_converted_func.graph.structured_outputs = nest.pack_sequence_as(
+          self._converted_func.graph.structured_outputs,
+          reset_converted_func.graph.structured_outputs)
+      self._converted_func = reset_converted_func
+
     signatures[self._input_saved_model_signature_key] = self._converted_func
     save.save(self._saved_model, output_saved_model_dir, signatures)
 

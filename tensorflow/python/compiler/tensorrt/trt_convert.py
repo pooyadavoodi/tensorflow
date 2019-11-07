@@ -203,14 +203,6 @@ def _check_conversion_params(conversion_params):
         ("precision mode '{}' is not supported."
          "It should be one of {}").format(conversion_params.precision_mode,
                                           supported_precision_modes))
-  if (conversion_params.allow_build_at_runtime and
-      not conversion_params.is_dynamic_op):
-    tf_logging.warn((
-        "Building TensorRT engines at runtime is not supported "
-        "if is_dynamic_op=False, therefore assuming "
-        "allow_build_at_runtime=False. If building TensorRT engines "
-        "at runtime is desired, set is_dynamic_op=True."))
-
 
 def _check_trt_version_compatibility():
   """Check compatibility of TensorRT version.
@@ -315,6 +307,14 @@ def get_tensorrt_rewriter_config(conversion_params, is_v2=False):
     optimizer.parameter_map[
         "max_batch_size"].i = conversion_params.max_batch_size
     optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
+    if not conversion_params.allow_build_at_runtime:
+      raise ValueError(
+          "Building TensorRT engines at runtime (allow_build_at_runtime=True) "
+          "is required in TF1.x because there is no method build() that can be"
+          "used to build TensorRT engines offline. In order to avoid building "
+          "engines at runtime in TF1.x, the only supported way is to set "
+          "is_dynamic_op=False which does not support graphs with "
+          "unknown shapes.")
   return rewriter_config_with_trt
 
 
@@ -376,8 +376,7 @@ class TrtGraphConverter(object):
                minimum_segment_size=3,
                is_dynamic_op=False,
                maximum_cached_engines=1,
-               use_calibration=True,
-               allow_build_at_runtime=True):
+               use_calibration=True):
     """Initialize the converter.
 
     Args:
@@ -416,11 +415,6 @@ class TrtGraphConverter(object):
         will occur. Please note that accuracy may be negatively affected if
         there is a mismatch between which tensors TRT quantizes and which
         tensors were trained with fake quantization.
-      allow_build_at_runtime:  Whether to build TensorRT engines during runtime.
-        If no TensorRT engine can be found in cache that can handle the given
-        inputs during runtime, then a new TensorRT engine is built at runtime if
-        allow_build_at_runtime=True, and otherwise native TF is used.
-        This argument is only effective if is_dynamic_op=True.
 
     Raises:
       ValueError: if the combination of the parameters is invalid.
@@ -480,7 +474,6 @@ class TrtGraphConverter(object):
         maximum_cached_engines=maximum_cached_engines,
         use_calibration=use_calibration,
         max_batch_size=max_batch_size,
-        allow_build_at_runtime=allow_build_at_runtime)
     _check_conversion_params(self._conversion_params)
 
   def _run_conversion(self):
@@ -1134,7 +1127,7 @@ class TrtGraphConverterV2(object):
         node.attr["allow_build_at_runtime"].b = False
       self._for_each_trt_node(self._converted_graph_def,
                               _reset_allow_build_at_runtime)
-      # Rebuild the function since the graph changed above
+      # Rebuild the function since a node attribute changed above
       reset_converted_func = wrap_function.function_from_graph_def(
           self._converted_graph_def,
           [tensor.name for tensor in self._converted_func.inputs],

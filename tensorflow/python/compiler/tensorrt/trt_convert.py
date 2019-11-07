@@ -1,4 +1,5 @@
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -299,8 +300,10 @@ def get_tensorrt_rewriter_config(conversion_params, is_v2=False):
       "maximum_cached_engines"].i = conversion_params.maximum_cached_engines
   optimizer.parameter_map[
       "use_calibration"].b = conversion_params.use_calibration
+  # Since build() needs this param to be True, setting the user specified value
+  # is postponed to save().
   optimizer.parameter_map[
-      "allow_build_at_runtime"].b = conversion_params.allow_build_at_runtime
+      "allow_build_at_runtime"].b = True
   if is_v2:
     # Static mode (building TRT engine without executing the op) is deprecated
     # in TF 2.0. See TrtGraphConverterV2 for more details.
@@ -1122,6 +1125,25 @@ class TrtGraphConverterV2(object):
     signatures = {
         key: value for key, value in self._saved_model.signatures.items()
     }
+
+    # Set allow_build_at_runtime=False if asked by user.
+    # This attribute is set here because build() needs it to be True
+    # in order to build engines.
+    if not self._conversion_params.allow_build_at_runtime:
+      def _reset_allow_build_at_runtime(node):
+        node.attr["allow_build_at_runtime"].b = False
+      self._for_each_trt_node(self._converted_graph_def,
+                              _reset_allow_build_at_runtime)
+      # Rebuild the function since the graph changed above
+      reset_converted_func = wrap_function.function_from_graph_def(
+          self._converted_graph_def,
+          [tensor.name for tensor in self._converted_func.inputs],
+          [tensor.name for tensor in self._converted_func.outputs])
+      reset_converted_func.graph.structured_outputs = nest.pack_sequence_as(
+          self._converted_func.graph.structured_outputs,
+          reset_converted_func.graph.structured_outputs)
+      self._converted_func = reset_converted_func
+
     signatures[self._input_saved_model_signature_key] = self._converted_func
     save.save(self._saved_model, output_saved_model_dir, signatures)
 

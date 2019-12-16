@@ -275,12 +275,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                  TrtPrecisionModeFromName(precision_string, &precision_mode_));
   OP_REQUIRES_OK(context,
                  context->GetAttr("use_calibration", &use_calibration_));
-  auto status = context->GetAttr("_allow_build_at_runtime", &allow_build_at_runtime_);
-  if (status.code() == tensorflow::error::NOT_FOUND) {
-    VLOG(2) << "Not found _allow_build_at_runtime in " << context->device()->name()
-            << ", thus setting _allow_build_at_runtime=true";
-    allow_build_at_runtime_ = true;
-  }
   func_handle_ = kInvalidHandle;
   if (!static_engine_) {
     FunctionLibraryRuntime* lib = context->function_library();
@@ -307,6 +301,12 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     VLOG(2) << "Not found _use_implicit_batch in " << context->device()->name()
             << ", thus setting _use_implicit_batch=true";
     use_implicit_batch_ = true;
+  }
+  status = context->GetAttr("_allow_build_at_runtime", &allow_build_at_runtime_);
+  if (status.code() == tensorflow::error::NOT_FOUND) {
+    VLOG(2) << "Not found _allow_build_at_runtime in " << context->device()->name()
+            << ", thus setting _allow_build_at_runtime=true";
+    allow_build_at_runtime_ = true;
   }
 }
 

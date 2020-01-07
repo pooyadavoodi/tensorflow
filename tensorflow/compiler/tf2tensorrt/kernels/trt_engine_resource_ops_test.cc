@@ -131,13 +131,17 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
   TF_ASSERT_OK(RunOpKernel());
   EXPECT_TRUE(rm->Lookup(container, resource_name, &resource).ok());
   EXPECT_EQ(0, resource->cache_.size());
+  EXPECT_EQ(0, resource->GetNumAllEngineShapes());
 
   // Create a serialized TRT engine file.
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine = CreateTRTEngine();
   TrtUniquePtrType<nvinfer1::IExecutionContext> context(
       engine->createExecutionContext());
+  int engine_key = resource->AddEngineShapes(
+      std::vector<TensorShape>{TensorShape({1, 1})});
+  EXPECT_EQ(0, engine_key);
   resource->cache_.emplace(
-      std::vector<TensorShape>{TensorShape({1, 1})},
+      engine_key,
       absl::make_unique<EngineContext>(std::move(engine), std::move(context)));
   resource->Unref();
 

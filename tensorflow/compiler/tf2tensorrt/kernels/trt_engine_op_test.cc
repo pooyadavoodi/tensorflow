@@ -133,10 +133,15 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
       device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
+  std::vector<TensorShape> engine_shapes;
+
   // It should contain only one engine.
   auto cache = &cache_resource->cache_;
   EXPECT_EQ(1, cache->size());
-  EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
+  EXPECT_EQ(1, cache_resource->GetNumAllEngineShapes());
+  TF_ASSERT_OK(cache_resource->GetEngineShapes(0, &engine_shapes));
+  EXPECT_EQ(engine_shapes, std::vector<TensorShape>({TensorShape({2, 2})}));
+  EXPECT_EQ(1, cache->count(0));
 
   // Execute the op with batch size 1. It should reuse existing engine to
   // execute.
@@ -144,29 +149,44 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({1, 2}));
   TF_ASSERT_OK(OpsTestBase::RunOpKernel());
   EXPECT_EQ(1, cache->size());
-  EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
+  EXPECT_EQ(1, cache_resource->GetNumAllEngineShapes());
+  TF_ASSERT_OK(cache_resource->GetEngineShapes(0, &engine_shapes));
+  EXPECT_EQ(engine_shapes, std::vector<TensorShape>({TensorShape({2, 2})}));
+  EXPECT_EQ(1, cache->count(0));
 
   // Execute the op with a larger batch size.
   ResetInputs();
   TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({3, 2}));
   TF_ASSERT_OK(OpsTestBase::RunOpKernel());
   EXPECT_EQ(2, cache->size());
-  EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
-  EXPECT_EQ(1, cache->count({TensorShape({3, 2})}));
+  EXPECT_EQ(2, cache_resource->GetNumAllEngineShapes());
+  TF_ASSERT_OK(cache_resource->GetEngineShapes(0, &engine_shapes));
+  EXPECT_EQ(engine_shapes, std::vector<TensorShape>({TensorShape({2, 2})}));
+  TF_ASSERT_OK(cache_resource->GetEngineShapes(1, &engine_shapes));
+  EXPECT_EQ(engine_shapes, std::vector<TensorShape>({TensorShape({3, 2})}));
+  EXPECT_EQ(1, cache->count(0));
+  EXPECT_EQ(1, cache->count(1));
 
   // Execute the op with an input that has different non-batch dimension.
   ResetInputs();
   TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({10, 10}));
   TF_ASSERT_OK(OpsTestBase::RunOpKernel());
   // Execute it again with an input that has the same non-batch dimension but
-  // smallest batch size. It should find the correct engine to use.
+  // smaller batch size. It should find the correct engine to use.
   ResetInputs();
   TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({1, 10}));
   TF_ASSERT_OK(OpsTestBase::RunOpKernel());
   EXPECT_EQ(3, cache->size());  // Should only create 3 engines in total.
-  EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
-  EXPECT_EQ(1, cache->count({TensorShape({3, 2})}));
-  EXPECT_EQ(1, cache->count({TensorShape({10, 10})}));
+  EXPECT_EQ(3, cache_resource->GetNumAllEngineShapes());
+  TF_ASSERT_OK(cache_resource->GetEngineShapes(0, &engine_shapes));
+  EXPECT_EQ(engine_shapes, std::vector<TensorShape>({TensorShape({2, 2})}));
+  TF_ASSERT_OK(cache_resource->GetEngineShapes(1, &engine_shapes));
+  EXPECT_EQ(engine_shapes, std::vector<TensorShape>({TensorShape({3, 2})}));
+  TF_ASSERT_OK(cache_resource->GetEngineShapes(2, &engine_shapes));
+  EXPECT_EQ(engine_shapes, std::vector<TensorShape>({TensorShape({10, 10})}));
+  EXPECT_EQ(1, cache->count(0));
+  EXPECT_EQ(1, cache->count(1));
+  EXPECT_EQ(1, cache->count(2));
 }
 
 template <typename T>

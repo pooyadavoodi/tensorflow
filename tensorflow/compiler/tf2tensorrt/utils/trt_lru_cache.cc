@@ -86,7 +86,7 @@ string TRTEngineCacheResource::DebugString() const {
   oss << "Containing " << cache_.size() << " entries: " << endl;
   for (const auto& item : cache_) {
     mutex_lock lock(item.second->mu);
-    oss << TensorShapeUtils::ShapeListString(item.first) << ": " << hex
+    oss << TensorShapeUtils::ShapeListString(all_engine_shapes_[item.first]) << ": " << hex
         << "ICudaEngine: " << item.second->cuda_engine.get() << ", "
         << "IExecutionContext: " ;
     for (auto& ctx: item.second->execution_context) {
@@ -95,6 +95,28 @@ string TRTEngineCacheResource::DebugString() const {
     oss << dec << endl;
   }
   return oss.str();
+}
+
+int TRTEngineCacheResource::GetNumAllEngineShapes() const {
+  return all_engine_shapes_.size();
+}
+
+// Get the i-th cached engine shapes.
+Status TRTEngineCacheResource::GetEngineShapes(const int i, std::vector<TensorShape>* engine_shapes) const {
+  if (i < all_engine_shapes_.size()) {
+    *engine_shapes = all_engine_shapes_[i];
+    return Status::OK();
+  }
+  return errors::InvalidArgument(
+      "Index ", i, " is out of range. ",
+      "Number of cached engine shapes is: ", all_engine_shapes_.size());
+}
+
+// Add a new engine shapes to cache and return its index in all_engine_shapes_.
+// The index can be used as the key to find an engine in the cache.
+int TRTEngineCacheResource::AddEngineShapes(const std::vector<TensorShape>& engine_shapes) {
+  all_engine_shapes_.push_back(engine_shapes);
+  return this->GetNumAllEngineShapes() - 1;
 }
 
 }  // namespace tensorrt

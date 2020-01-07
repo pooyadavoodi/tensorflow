@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-bool isAnyInputDynamic(const nvinfer1::INetworkDefinition *network) {
+bool IsAnyInputDynamic(const nvinfer1::INetworkDefinition *network) {
   bool is_any_dynamic = false;
   for (int i = 0; i < network->getNbInputs(); i++) {
     auto input = network->getInput(i);
@@ -33,7 +33,7 @@ bool isAnyInputDynamic(const nvinfer1::INetworkDefinition *network) {
 
 /// Create optimization profiles for a list of input shapes.
 /// The list of input shapes are stored in shapes_.
-void TrtShapeOptimizationProfile::initProfiles(int n_profiles) {
+void TrtShapeOptimizationProfile::InitProfiles(int n_profiles) {
   // Can it happen that we call build twice? In that case we should decide
   // whether we want to append the new profiles, or start again?
   // profiles_.clear();
@@ -56,7 +56,7 @@ void TrtShapeOptimizationProfile::initProfiles(int n_profiles) {
   }
 }
 
-Status TrtShapeOptimizationProfile::addProfiles(
+Status TrtShapeOptimizationProfile::AddProfiles(
     nvinfer1::IBuilder *builder, nvinfer1::IBuilderConfig* config,
     const nvinfer1::INetworkDefinition *network) {
   // Create a vector of optimization profiles
@@ -66,7 +66,7 @@ Status TrtShapeOptimizationProfile::addProfiles(
   auto shape_vec = input_shapes_.begin();
   for (auto& profile: profiles_) {
     auto* optProfile = builder->createOptimizationProfile();
-    Status status = profile.setDimensions(network, optProfile);
+    Status status = profile.SetDimensions(network, optProfile);
     if (!status.ok()) {
       return status;
     }
@@ -91,11 +91,11 @@ Status TrtShapeOptimizationProfile::addProfiles(
   return Status::OK();
 }
 
-Status TrtShapeOptimizationProfile::configureBuilder(
+Status TrtShapeOptimizationProfile::ConfigureBuilder(
   nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
   const nvinfer1::INetworkDefinition* network, int n_profiles) {
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  if (!isAnyInputDynamic(network)) {
+  if (!IsAnyInputDynamic(network)) {
     // we do not need profiles for static input
     return Status::OK();
   }
@@ -105,13 +105,14 @@ Status TrtShapeOptimizationProfile::configureBuilder(
     // profile is added by GetEngine
     return errors::Internal("No TRT optimization profile found");
   }
-  initProfiles(n_profiles);
-  addProfiles(builder, config, network);
+  InitProfiles(n_profiles);
+  AddProfiles(builder, config, network);
 #endif
   return Status::OK();
 }
 
-int TrtShapeOptimizationProfile::getProfileNumber(std::vector<TensorShape> shapes) {
+int TrtShapeOptimizationProfile::GetProfileNumber(
+  const std::vector<TensorShape>& shapes) {
   if (profile_map_.size() == 0) {
     // No optimization profiles, we just return 0, the default profile number
     return 0;
@@ -126,7 +127,7 @@ int TrtShapeOptimizationProfile::getProfileNumber(std::vector<TensorShape> shape
   }
 }
 
-Status TrtShapeOptimizationProfile::createExcecutionContexts(
+Status TrtShapeOptimizationProfile::CreateExcecutionContexts(
   nvinfer1::ICudaEngine* engine,
   std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context) {
   int i=0;
@@ -158,6 +159,15 @@ Status TrtShapeOptimizationProfile::createExcecutionContexts(
   } while (i<profile_map_.size());
 
   return Status::OK();
+}
+
+int TrtShapeOptimizationProfile::GetNumProfiles() const {
+  return profiles_.size();
+}
+
+bool TrtShapeOptimizationProfile::ProfileIncludesShapes(
+  const int profile_idx, const std::vector<TensorShape>& shapes) const {
+  return profiles_[profile_idx].IncludesShapes(shapes);
 }
 
 }  // namespace tensorrt

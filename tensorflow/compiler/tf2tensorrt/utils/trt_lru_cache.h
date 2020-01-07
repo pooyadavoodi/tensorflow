@@ -35,7 +35,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-template <class Key, class Value, class HashFunction>
+template <class Key, class Value, class HashFunction = std::hash<Key> >
 class LRUCache {
  public:
   typedef Value value_type;
@@ -181,13 +181,21 @@ class TRTEngineCacheResource : public ResourceBase {
 
   string DebugString() const override;
 
+  // Return number of engine shapes stored in cache.
+  int GetNumAllEngineShapes() const;
+
+  // Get the i-th cached engine shapes.
+  Status GetEngineShapes(const int i, std::vector<TensorShape>* engine_shapes) const;
+
+  // Add a new engine shapes to cache and return its index in all_engine_shapes_.
+  // The index can be used as the key to find an engine in the cache.
+  int AddEngineShapes(const std::vector<TensorShape>& engine_shapes);
+
   // Keep device allocator for TRT.
   std::unique_ptr<TRTBaseAllocator> allocator_;
 
   // Declare cache after allocator so that it is destroyed before allocator is.
-  LRUCache<std::vector<TensorShape>, std::unique_ptr<EngineContext>,
-           VectorTensorShapeHasher>
-      cache_;
+  LRUCache<int, std::unique_ptr<EngineContext> > cache_;
 
   // TODO(hinsu): Use different calibration context for the available shapes and
   // attach it to each item of the cache.
@@ -195,6 +203,15 @@ class TRTEngineCacheResource : public ResourceBase {
 
   // Optimization Profiles
   TrtShapeOptimizationProfile profiles_;
+
+ private:
+  // Vector storing all shapes used in building engines.
+  // Only used in implicit batch mode.
+  // We don't use a sorted data structure such as BST
+  // because the index of shapes in the vector must not change
+  // due to using the index as an engine key to the engine cache.
+  // We do not guarantee that all shapes in the vector are distinct.
+  std::vector<std::vector<TensorShape> > all_engine_shapes_;
 };
 
 #endif  // GOOGLE_TENSORRT

@@ -140,11 +140,13 @@ class InitializeTRTResource : public OpKernel {
               engine_instance.serialized_engine().c_str(),
               engine_instance.serialized_engine().size(), nullptr));
       auto raw_engine = engine.get();
+      int engine_key = resource->AddEngineShapes(engine_input_shapes);
       resource->cache_.emplace(
-          engine_input_shapes,
+          engine_key,
           absl::make_unique<EngineContext>(
               std::move(engine), TrtUniquePtrType<nvinfer1::IExecutionContext>(
                                      raw_engine->createExecutionContext())));
+      assert(num_loaded_engine == engine_key);
       ++num_loaded_engine;
     } while (1);
     VLOG(1) << "Loaded " << num_loaded_engine << " TRT engines for op "
@@ -199,7 +201,8 @@ class SerializeTRTResource : public OpKernel {
 
       TRTEngineInstance engine_instance;
       // Add input shapes.
-      const std::vector<TensorShape>& engine_input_shapes = pair.first;
+      std::vector<TensorShape> engine_input_shapes;
+      OP_REQUIRES_OK(ctx, resource->GetEngineShapes(pair.first, &engine_input_shapes));
       for (const TensorShape& shape : engine_input_shapes) {
         shape.AsProto(engine_instance.add_input_shapes());
       }

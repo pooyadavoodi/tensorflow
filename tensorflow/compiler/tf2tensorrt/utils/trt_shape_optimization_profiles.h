@@ -64,19 +64,51 @@ struct OptimizationProfileConfig {
   // Parameters:
   // network - TensorRT network, used to enumerate all the input tensors
   // profile - on exit the profile information will be set for each input tensor
-  Status setDimensions(const nvinfer1::INetworkDefinition *network,
+  Status SetDimensions(const nvinfer1::INetworkDefinition *network,
                      nvinfer1::IOptimizationProfile *profile) const {
     int n_inputs = network->getNbInputs();
-    if (min.size()!=n_inputs || opt.size()!=n_inputs || max.size()!=n_inputs) {
+    if ((min.size() != n_inputs) ||
+        (opt.size() != n_inputs) ||
+        (max.size() != n_inputs)) {
       return errors::Internal("Incorrect number of profile config parameters");
     }
     for (int i = 0; i < n_inputs; i++) {
+      if ((min[i].nbDims != max[i].nbDims) ||
+          (min[i].nbDims != opt[i].nbDims)) {
+        return errors::Internal("Incorrect number of dimensions in profiles");
+      }
       const char *name = network->getInput(i)->getName();
       profile->setDimensions(name, nvinfer1::OptProfileSelector::kMIN, min[i]);
       profile->setDimensions(name, nvinfer1::OptProfileSelector::kOPT, opt[i]);
       profile->setDimensions(name, nvinfer1::OptProfileSelector::kMAX, max[i]);
     }
     return Status::OK();
+  }
+
+  // Returns true if profile range completely includes the given shapes.
+  bool IncludesShapes(const std::vector<TensorShape>& shapes) const {
+    // min, max, and opt must have the same size which,
+    // already verified in SetDimensions.
+    if (min.size() != shapes.size()) {
+      return false;
+    }
+    for (int i = 0; i < shapes.size(); i++) {
+       auto current_shape = shapes[i];
+       auto trt_shape = TensorShapeToTrtDims(current_shape, false);
+       // min, max, and opt must have the same nbDims, which is
+       // already verified in SetDimensions.
+       if (min[i].nbDims != current_shape.dims()) {
+         return false;
+        }
+       // Check if range [min, max] includes current_shape.
+       for (int dim = 0; dim < current_shape.dims(); dim++) {
+         if ((min[i].d[dim] > current_shape.dim_size(dim)) ||
+             (max[i].d[dim] < current_shape.dim_size(dim))) {
+           return false;
+         }
+       }
+    }
+    return true;
   }
 };
 
@@ -96,21 +128,21 @@ class TrtShapeOptimizationProfile {
    TrtShapeOptimizationProfile() {};
 
    // Stores input shape information during profile_generation_mode
-   void addShape(std::vector<TensorShape> shapes) {
+   void AddShape(std::vector<TensorShape> shapes) {
      input_shapes_.insert(shapes);
    }
 
-   void addShapeIfEmpty(std::vector<TensorShape> shapes) {
+   void AddShapeIfEmpty(std::vector<TensorShape> shapes) {
      if (input_shapes_.size() == 0) {
-       addShape(shapes);
+       AddShape(shapes);
      }
    }
-   void clear() { profiles_.clear(); }
+   void Clear() { profiles_.clear(); }
 
    // Returns the profile number that should be used to execute the network
    // with the given input shapes.
    // Use this only after the engine with all the profiles are constructed.
-   int getProfileNumber(std::vector<TensorShape> shapes);
+   int GetProfileNumber(const std::vector<TensorShape>& shapes);
 
    // Creates optimization profiles and add them to the builder config.
    //
@@ -122,18 +154,26 @@ class TrtShapeOptimizationProfile {
    // config -
    // network -
    // n_profiles number of profiles to generate.
-   Status configureBuilder(
+   Status ConfigureBuilder(
      nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
      const nvinfer1::INetworkDefinition* network, int n_profiles = 0);
 
- // Creates execution contexts for each optimization profile.
- //
- // Parameters:
- // engine - cuda engine
- // exec_context - we append one execution context for each element in profile_
- Status createExcecutionContexts(
-   nvinfer1::ICudaEngine* engine,
-   std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context);
+  // Creates execution contexts for each optimization profile.
+  //
+  // Parameters:
+  // engine - cuda engine
+  // exec_context - we append one execution context for each element in profile_
+  Status CreateExcecutionContexts(
+    nvinfer1::ICudaEngine* engine,
+    std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context);
+
+  // Returns number of profiles stored in profiles_.
+  int GetNumProfiles() const;
+
+  // Returns true if range of profile with index profile_idx from
+  // profiles_ completely includes the given shapes.
+  bool ProfileIncludesShapes(
+    const int profile_idx, const std::vector<TensorShape>& shapes) const;
 
  private:
   // Set of input shape vetors that we collect during profile_generation_mode
@@ -146,10 +186,10 @@ class TrtShapeOptimizationProfile {
   /// Map input vector shapes to TRT Optimization profiles (min, max, opt)
   // i.e. maps input_shapes_ to profiles_
   // Parameter: n_profile - number of profiles to generate
-  void initProfiles(int n_profile);
+  void InitProfiles(int n_profile);
 
   /// Add optimization profiles to the builder config
-  Status addProfiles(nvinfer1::IBuilder *builder,
+  Status AddProfiles(nvinfer1::IBuilder *builder,
                      nvinfer1::IBuilderConfig* config,
                      const nvinfer1::INetworkDefinition *network);
 

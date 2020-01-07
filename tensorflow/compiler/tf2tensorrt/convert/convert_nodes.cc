@@ -1352,7 +1352,7 @@ Status Converter::BuildCudaEngine(
     }
   }
   if (!use_implicit_batch_) {
-    profiles.configureBuilder(trt_builder_.get(), builder_config.get(),
+    profiles.ConfigureBuilder(trt_builder_.get(), builder_config.get(),
                               network());
   }
   VLOG(1) << "Building TensorRT engine";

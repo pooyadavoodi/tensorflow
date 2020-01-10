@@ -556,9 +556,9 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     ExecuteNativeSegment(ctx, helper);
     return;
   }
-  int opt_profile_idx = cache_res->profiles_.GetProfileNumber(input_shapes);
+  int trt_context_idx = cache_res->profiles_.GetProfileNumber(input_shapes);
 
-  const bool retry = ExecuteTrtEngine(ctx, engine_context, opt_profile_idx);
+  const bool retry = ExecuteTrtEngine(ctx, engine_context, trt_context_idx);
   if (retry) {
     LOG(WARNING) << "Failed to execute engine, "
                  << "retrying with native segment for " << name();
@@ -574,7 +574,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
 
 bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                                    EngineContext* engine_context,
-                                   int opt_profile_idx) {
+                                   int trt_context_idx) {
   VLOG(1) << "Executing TRT engine: " << name();
   auto& cuda_engine = engine_context->cuda_engine;
 
@@ -597,13 +597,13 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   }
 
   const bool kRetry = true;
-  if (opt_profile_idx >= engine_context->execution_context.size()) {
-    LOG(ERROR) << "Requested engine context with index " << opt_profile_idx
+  if (trt_context_idx >= engine_context->execution_context.size()) {
+    LOG(ERROR) << "Requested engine context with index " << trt_context_idx
                << ", but only " <<  engine_context->execution_context.size()
                << "contexts are present.";
     return kRetry;
   }
-  auto& execution_context = engine_context->execution_context[opt_profile_idx];
+  auto& execution_context = engine_context->execution_context[trt_context_idx];
   const int num_binding = ctx->num_inputs() + ctx->num_outputs();
   std::vector<void*> buffers(num_binding);
 
